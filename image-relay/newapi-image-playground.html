@@ -1,0 +1,517 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rivermoon NewAPI 生图</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f6f8fb;
+      color: #1f2933;
+    }
+    .layout {
+      width: min(1180px, calc(100vw - 28px));
+      margin: 0 auto;
+      padding: 24px 0 36px;
+    }
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 18px;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+    .logo {
+      width: 34px;
+      height: 34px;
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+      background: #111827;
+      color: #fff;
+      font-weight: 800;
+    }
+    h1 {
+      margin: 0;
+      font-size: 24px;
+      line-height: 1.25;
+      letter-spacing: 0;
+    }
+    .nav {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .pill {
+      min-height: 34px;
+      padding: 7px 10px;
+      border: 1px solid #d8e0e8;
+      border-radius: 8px;
+      background: #fff;
+      color: #50606f;
+      font-size: 14px;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+    }
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #1d9b6c;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
+      gap: 18px;
+      align-items: start;
+    }
+    .panel {
+      border: 1px solid #dfe6ee;
+      border-radius: 8px;
+      background: #fff;
+      box-shadow: 0 14px 34px rgba(31, 41, 51, 0.07);
+    }
+    .form {
+      padding: 18px;
+    }
+    .field {
+      display: grid;
+      gap: 7px;
+      margin-bottom: 14px;
+    }
+    label {
+      font-size: 13px;
+      font-weight: 700;
+      color: #263341;
+    }
+    textarea,
+    select,
+    input {
+      width: 100%;
+      border: 1px solid #ccd7e2;
+      border-radius: 8px;
+      background: #fbfcfe;
+      color: #1f2933;
+      font: inherit;
+      outline: none;
+      transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
+    }
+    textarea:focus,
+    select:focus,
+    input:focus {
+      border-color: #1f7a8c;
+      background: #fff;
+      box-shadow: 0 0 0 3px rgba(31, 122, 140, .14);
+    }
+    textarea {
+      min-height: 210px;
+      padding: 12px;
+      resize: vertical;
+      line-height: 1.55;
+    }
+    select,
+    input {
+      height: 42px;
+      padding: 0 11px;
+    }
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    .actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 16px;
+    }
+    button,
+    .button-link {
+      height: 42px;
+      border: 0;
+      border-radius: 8px;
+      padding: 0 14px;
+      font: inherit;
+      font-weight: 750;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      text-decoration: none;
+    }
+    .primary {
+      flex: 1;
+      background: #111827;
+      color: #fff;
+    }
+    .primary:disabled {
+      cursor: wait;
+      opacity: .68;
+    }
+    .secondary,
+    .button-link {
+      border: 1px solid #ccd7e2;
+      background: #f7f9fb;
+      color: #263341;
+    }
+    .message {
+      min-height: 22px;
+      margin-top: 12px;
+      color: #667487;
+      font-size: 14px;
+      line-height: 1.55;
+    }
+    .message.error { color: #b42318; }
+    .message.ok { color: #12735b; }
+    .result {
+      min-height: 650px;
+      overflow: hidden;
+    }
+    .result-head {
+      min-height: 58px;
+      padding: 0 16px;
+      border-bottom: 1px solid #e3e9ef;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .result-title {
+      font-weight: 800;
+    }
+    .result-meta {
+      margin-top: 2px;
+      color: #6b7788;
+      font-size: 13px;
+    }
+    .stage {
+      min-height: 590px;
+      display: grid;
+      place-items: center;
+      padding: 18px;
+      background:
+        linear-gradient(45deg, #f4f7fa 25%, transparent 25%),
+        linear-gradient(-45deg, #f4f7fa 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #f4f7fa 75%),
+        linear-gradient(-45deg, transparent 75%, #f4f7fa 75%);
+      background-size: 28px 28px;
+      background-position: 0 0, 0 14px, 14px -14px, -14px 0;
+    }
+    .empty {
+      width: min(460px, 100%);
+      text-align: center;
+      color: #5f6f7f;
+      line-height: 1.65;
+    }
+    .preview {
+      max-width: 100%;
+      max-height: 74vh;
+      border-radius: 8px;
+      background: #fff;
+      box-shadow: 0 20px 50px rgba(31, 41, 51, .18);
+    }
+    .download {
+      height: 38px;
+    }
+    [hidden] { display: none !important; }
+    .spinner {
+      width: 34px;
+      height: 34px;
+      margin: 0 auto 12px;
+      border: 4px solid #cfd8e3;
+      border-top-color: #1f7a8c;
+      border-radius: 50%;
+      animation: spin .9s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @media (max-width: 860px) {
+      .grid { grid-template-columns: 1fr; }
+      .topbar { align-items: flex-start; flex-direction: column; }
+      .stage { min-height: 430px; }
+      .result { min-height: 500px; }
+    }
+    @media (max-width: 520px) {
+      .layout { width: min(100vw - 20px, 1180px); padding-top: 16px; }
+      .row { grid-template-columns: 1fr; }
+      .actions { flex-direction: column; }
+      button, .button-link { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <div class="topbar">
+      <div class="brand">
+        <div class="logo">R</div>
+        <h1>Rivermoon 生图操练场</h1>
+      </div>
+      <div class="nav">
+        <span class="pill"><span class="dot"></span><span id="loginState">检查登录态</span></span>
+        <a class="pill" href="/console/playground">返回操练场</a>
+        <a class="pill" href="/console">控制台</a>
+      </div>
+    </div>
+
+    <div class="grid">
+      <section class="panel form">
+        <form id="generateForm">
+          <div class="field">
+            <label for="prompt">提示词</label>
+            <textarea id="prompt" required placeholder="写下你想生成的画面"></textarea>
+          </div>
+          <div class="row">
+            <div class="field">
+              <label for="size">尺寸</label>
+              <select id="size">
+                <option value="1024x1024">1024 x 1024</option>
+                <option value="1024x1536">1024 x 1536</option>
+                <option value="1536x1024">1536 x 1024</option>
+                <option value="auto">auto</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="model">模型</label>
+              <input id="model" value="image2.0" readonly>
+            </div>
+          </div>
+          <div class="actions">
+            <button class="primary" id="generateButton" type="submit">生成图片</button>
+            <button class="secondary" id="clearButton" type="button">清空</button>
+          </div>
+          <div class="message" id="message"></div>
+        </form>
+      </section>
+
+      <section class="panel result">
+        <div class="result-head">
+          <div>
+            <div class="result-title">结果</div>
+            <div class="result-meta" id="resultMeta">等待生成</div>
+          </div>
+          <a class="button-link download" id="downloadLink" href="#" download="rivermoon-image.png" hidden>下载</a>
+        </div>
+        <div class="stage" id="stage">
+          <div class="empty">
+            <p>登录 NewAPI 后可直接生成。</p>
+            <p>页面会自动使用你的 NewAPI 用户额度，不需要手动填写密钥。</p>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    const MODEL = "image2.0";
+    const TOKEN_NAME = "image2.0 操练场";
+    const TOKEN_CACHE_KEY = "rivermoon_image_playground_token_key";
+
+    const form = document.getElementById("generateForm");
+    const promptInput = document.getElementById("prompt");
+    const sizeInput = document.getElementById("size");
+    const button = document.getElementById("generateButton");
+    const clearButton = document.getElementById("clearButton");
+    const message = document.getElementById("message");
+    const stage = document.getElementById("stage");
+    const resultMeta = document.getElementById("resultMeta");
+    const downloadLink = document.getElementById("downloadLink");
+    const loginState = document.getElementById("loginState");
+
+    function currentUser() {
+      try {
+        const user = JSON.parse(localStorage.getItem("user") || "null");
+        return user && user.token ? user : null;
+      } catch {
+        return null;
+      }
+    }
+
+    function authHeaders() {
+      const user = currentUser();
+      if (!user) return null;
+      return { Authorization: "Bearer " + user.token };
+    }
+
+    function setMessage(text, kind = "") {
+      message.textContent = text;
+      message.className = "message" + (kind ? " " + kind : "");
+    }
+
+    function setBusy(busy) {
+      button.disabled = busy;
+      button.textContent = busy ? "生成中..." : "生成图片";
+    }
+
+    function setLoggedInState() {
+      const user = currentUser();
+      loginState.textContent = user ? "NewAPI 已登录" : "请先登录 NewAPI";
+      button.disabled = !user;
+      if (!user) {
+        setMessage("请先登录 NewAPI，再回到此页面生成图片。", "error");
+      }
+    }
+
+    async function apiJson(path, options = {}) {
+      const headers = { ...(options.headers || {}) };
+      const auth = authHeaders();
+      if (auth) Object.assign(headers, auth);
+      const response = await fetch(path, { ...options, headers });
+      const text = await response.text();
+      let data = {};
+      try { data = text ? JSON.parse(text) : {}; } catch {}
+      if (!response.ok || data.success === false) {
+        const detail = data.message || (data.error && data.error.message) || "请求失败。";
+        throw new Error(detail);
+      }
+      return data;
+    }
+
+    async function fetchTokenKey(tokenId) {
+      const data = await apiJson(`/api/token/${tokenId}/key`, { method: "POST" });
+      const raw = data && data.data && data.data.key;
+      if (!raw) throw new Error("无法获取 NewAPI token。");
+      return raw.startsWith("sk-") ? raw : "sk-" + raw;
+    }
+
+    async function findImageToken() {
+      const data = await apiJson("/api/token/?p=1&size=100");
+      const payload = data.data || {};
+      const items = Array.isArray(payload) ? payload : (payload.items || []);
+      return items.find((item) => item.status === 1 && item.name === TOKEN_NAME);
+    }
+
+    async function createImageToken() {
+      await apiJson("/api/token/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: TOKEN_NAME,
+          remain_quota: 0,
+          expired_time: -1,
+          unlimited_quota: true,
+          model_limits_enabled: true,
+          model_limits: MODEL,
+          allow_ips: "",
+          group: "",
+          cross_group_retry: false
+        })
+      });
+      const token = await findImageToken();
+      if (!token || !token.id) throw new Error("已创建 token，但未能读取 token 信息。");
+      return token;
+    }
+
+    async function getImageApiKey() {
+      const cached = sessionStorage.getItem(TOKEN_CACHE_KEY);
+      if (cached) return cached;
+      setMessage("正在准备 NewAPI 生图 token...");
+      let token = await findImageToken();
+      if (!token) token = await createImageToken();
+      const key = await fetchTokenKey(token.id);
+      sessionStorage.setItem(TOKEN_CACHE_KEY, key);
+      return key;
+    }
+
+    function showLoading() {
+      downloadLink.hidden = true;
+      resultMeta.textContent = "生成中";
+      stage.innerHTML = '<div class="empty"><div class="spinner"></div><p>正在生成图片...</p></div>';
+    }
+
+    function showImage(src) {
+      const img = document.createElement("img");
+      img.className = "preview";
+      img.alt = "生成结果";
+      img.src = src;
+      stage.replaceChildren(img);
+      downloadLink.href = src;
+      downloadLink.hidden = false;
+      resultMeta.textContent = new Date().toLocaleString();
+    }
+
+    function extractImage(data) {
+      const item = data && data.data && data.data[0];
+      if (!item) return "";
+      if (item.b64_json) return "data:image/png;base64," + item.b64_json;
+      if (item.url) return item.url;
+      return "";
+    }
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const user = currentUser();
+      if (!user) {
+        window.location.href = "/login";
+        return;
+      }
+      const prompt = promptInput.value.trim();
+      if (!prompt) {
+        setMessage("请先输入提示词。", "error");
+        promptInput.focus();
+        return;
+      }
+
+      setBusy(true);
+      showLoading();
+      setMessage("");
+
+      try {
+        const key = await getImageApiKey();
+        const response = await fetch("/v1/images/generations", {
+          method: "POST",
+          headers: {
+            Authorization: "Bearer " + key,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            model: MODEL,
+            prompt,
+            size: sizeInput.value
+          })
+        });
+        const text = await response.text();
+        let data = {};
+        try { data = text ? JSON.parse(text) : {}; } catch {
+          throw new Error("服务返回了无法解析的内容。");
+        }
+        if (!response.ok) {
+          const detail = data.error && data.error.message ? data.error.message : "生成失败。";
+          throw new Error(detail);
+        }
+        const image = extractImage(data);
+        if (!image) throw new Error("生成完成，但响应里没有图片。");
+        showImage(image);
+        setMessage("生成完成，费用已计入你的 NewAPI 用户额度。", "ok");
+      } catch (err) {
+        resultMeta.textContent = "生成失败";
+        stage.innerHTML = '<div class="empty"><p>没有生成图片。</p></div>';
+        setMessage(err.message || "生成失败。", "error");
+      } finally {
+        setBusy(false);
+      }
+    });
+
+    clearButton.addEventListener("click", () => {
+      promptInput.value = "";
+      setMessage("");
+      downloadLink.hidden = true;
+      resultMeta.textContent = "等待生成";
+      stage.innerHTML = '<div class="empty"><p>登录 NewAPI 后可直接生成。</p><p>页面会自动使用你的 NewAPI 用户额度，不需要手动填写密钥。</p></div>';
+      promptInput.focus();
+    });
+
+    setLoggedInState();
+  </script>
+</body>
+</html>

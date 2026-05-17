@@ -1,0 +1,29 @@
+services:
+  image-relay:
+    build:
+      context: .
+    image: rivermoon7-image-relay:latest
+    container_name: image-relay
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "127.0.0.1:8320:8320"
+    networks:
+      - new-api-network
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8320/healthz', timeout=5).read()",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+networks:
+  new-api-network:
+    external: true
