@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type ClipboardEvent as ReactClipboardEvent, type ReactNode, type RefObject } from "react";
 import Zoom from "react-medium-image-zoom";
-import { ArrowUp, Brush, ChevronDown, CircleHelp, ImagePlus, Trash2 } from "lucide-react";
+import { ArrowUp, Brush, ChevronDown, CircleHelp, ImagePlus, Tags, Trash2 } from "lucide-react";
 
 import { AppImage as Image } from "@/components/app-image";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,7 @@ import { Textarea } from "@/components/ui/textarea";
 import type { ImageOutputFormat, ImageQuality } from "@/lib/api";
 import type { ImageMode, StoredSourceImage } from "@/store/image-conversations";
 import { cn } from "@/lib/utils";
+import { buildSourceImageReferenceLabel, normalizeSourceImageMention } from "../submit-utils";
 import { buildSourceImageUrl } from "../view-utils";
 
 type PromptComposerProps = {
@@ -51,6 +52,7 @@ type PromptComposerProps = {
   onPromptChange: (value: string) => void;
   onPromptPaste: (event: ReactClipboardEvent<HTMLTextAreaElement>) => void;
   onRemoveSourceImage: (id: string) => void;
+  onUpdateSourceImageReference: (id: string, value: string) => void;
   onOpenSourceSelectionEditor: (sourceImageId: string) => void;
   onAppendFiles: (files: FileList | null, role: "image" | "mask") => Promise<void>;
   onMobileCollapsedChange?: (collapsed: boolean) => void;
@@ -88,6 +90,7 @@ export function PromptComposer({
   onPromptChange,
   onPromptPaste,
   onRemoveSourceImage,
+  onUpdateSourceImageReference,
   onOpenSourceSelectionEditor,
   onAppendFiles,
   onMobileCollapsedChange,
@@ -103,8 +106,11 @@ export function PromptComposer({
   const hasComposerContent = imagePrompt.trim().length > 0 || sourceImages.length > 0;
   const previousHasComposerContentRef = useRef(hasComposerContent);
   const [isMobileComposerExpanded, setIsMobileComposerExpanded] = useState(hasComposerContent);
+  const [mentionPickerOpen, setMentionPickerOpen] = useState(false);
+  const [mentionPickerIndex, setMentionPickerIndex] = useState(0);
   const isMobileComposerCollapsed = !isMobileComposerExpanded;
   const showMobileExpandedSections = !isMobileComposerCollapsed;
+  const imageReferenceSources = sourceImages.filter((item) => item.role === "image");
 
   useEffect(() => {
     if (hasComposerContent && !previousHasComposerContentRef.current) {
@@ -135,6 +141,76 @@ export function PromptComposer({
         </span>
       </span>
     ) : null;
+
+  function insertImageMention(source: StoredSourceImage, index: number) {
+    const textarea = textareaRef.current;
+    const mention = normalizeSourceImageMention(source.referenceAlias) ||
+      buildSourceImageReferenceLabel(source, index);
+    const currentValue = imagePrompt;
+    const selectionStart = textarea?.selectionStart ?? currentValue.length;
+    const selectionEnd = textarea?.selectionEnd ?? selectionStart;
+    const beforeSelection = currentValue.slice(0, selectionStart);
+    const afterSelection = currentValue.slice(selectionEnd);
+    const atIndex = beforeSelection.lastIndexOf("@");
+    const replaceStart = atIndex >= 0 ? atIndex : selectionStart;
+    const prefix = currentValue.slice(0, replaceStart);
+    const needsLeadingSpace = prefix.length > 0 && !/\s$/.test(prefix);
+    const needsTrailingSpace = afterSelection.length > 0 && !/^\s/.test(afterSelection);
+    const nextValue = `${prefix}${needsLeadingSpace ? " " : ""}${mention}${needsTrailingSpace ? " " : ""}${afterSelection}`;
+    const nextCursor = `${prefix}${needsLeadingSpace ? " " : ""}${mention} `.length;
+
+    onPromptChange(nextValue);
+    setMentionPickerOpen(false);
+    window.requestAnimationFrame(() => {
+      textarea?.focus();
+      textarea?.setSelectionRange(nextCursor, nextCursor);
+    });
+  }
+
+  function handlePromptKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (mentionPickerOpen && imageReferenceSources.length > 0) {
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        setMentionPickerIndex((current) => (current + 1) % imageReferenceSources.length);
+        return;
+      }
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        setMentionPickerIndex((current) =>
+          (current - 1 + imageReferenceSources.length) % imageReferenceSources.length,
+        );
+        return;
+      }
+      if (event.key === "Enter") {
+        event.preventDefault();
+        insertImageMention(
+          imageReferenceSources[mentionPickerIndex],
+          sourceImages.findIndex((item) => item.id === imageReferenceSources[mentionPickerIndex].id),
+        );
+        return;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setMentionPickerOpen(false);
+        return;
+      }
+    }
+
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      void onSubmit();
+    }
+  }
+
+  function handlePromptValueChange(value: string) {
+    onPromptChange(value);
+    const textarea = textareaRef.current;
+    const cursor = textarea?.selectionStart ?? value.length;
+    const beforeCursor = value.slice(0, cursor);
+    const mentionMatch = beforeCursor.match(/(^|\s)@[\u4e00-\u9fa5\w-]*$/);
+    setMentionPickerOpen(Boolean(mentionMatch && imageReferenceSources.length > 0));
+    setMentionPickerIndex(0);
+  }
 
   return (
     <div
@@ -313,12 +389,32 @@ export function PromptComposer({
               )}
             >
               {sourceImages.map((item) => (
+                (() => {
+                  const sourceIndex = sourceImages.filter((source) => source.role === "image").findIndex((source) => source.id === item.id);
+                  const referenceLabel = item.role === "image"
+                    ? buildSourceImageReferenceLabel(item, sourceIndex >= 0 ? sourceIndex : 0)
+                    : "遮罩";
+                  const referenceAlias = normalizeSourceImageMention(item.referenceAlias);
+                  const displayLabel = referenceAlias || referenceLabel;
+                  return (
                 <div
                   key={item.id}
-                  className="w-[104px] shrink-0 overflow-hidden rounded-[16px] border border-stone-200 bg-white sm:w-[126px] sm:rounded-[18px]"
+                  className="w-[118px] shrink-0 overflow-hidden rounded-[16px] border border-stone-200 bg-white sm:w-[142px] sm:rounded-[18px]"
                 >
                   <div className="flex items-center justify-between border-b border-stone-100 px-3 py-2 text-[11px] font-medium text-stone-500">
-                    <span>{item.role === "mask" ? "遮罩" : "源图"}</span>
+                    <button
+                      type="button"
+                      className="min-w-0 truncate rounded-full bg-stone-100 px-2 py-0.5 text-[11px] font-semibold text-stone-700 transition hover:bg-stone-200"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        if (item.role === "image") {
+                          insertImageMention(item, sourceIndex >= 0 ? sourceIndex : 0);
+                        }
+                      }}
+                      title={item.role === "image" ? "插入图片引用" : "遮罩"}
+                    >
+                      {displayLabel}
+                    </button>
                     <div className="flex items-center gap-1">
                       {mode === "edit" && item.role === "image" ? (
                         <button
@@ -346,6 +442,20 @@ export function PromptComposer({
                       </button>
                     </div>
                   </div>
+                  {item.role === "image" ? (
+                    <div className="border-b border-stone-100 px-2 py-1.5">
+                      <Input
+                        value={item.referenceAlias?.replace(/^@/, "") ?? ""}
+                        placeholder={referenceLabel.replace(/^@/, "")}
+                        onClick={(event) => event.stopPropagation()}
+                        onChange={(event) =>
+                          onUpdateSourceImageReference(item.id, event.target.value)
+                        }
+                        className="h-7 rounded-lg border-stone-200 bg-stone-50 px-2 text-[11px] shadow-none placeholder:text-stone-400"
+                        aria-label={`${referenceLabel} 别名`}
+                      />
+                    </div>
+                  ) : null}
                   <Zoom>
                     <Image
                       src={buildSourceImageUrl(item)}
@@ -357,6 +467,8 @@ export function PromptComposer({
                     />
                   </Zoom>
                 </div>
+                  );
+                })()
               ))}
             </div>
           ) : null}
@@ -382,7 +494,7 @@ export function PromptComposer({
                 <Textarea
                   ref={textareaRef}
                   value={imagePrompt}
-                  onChange={(event) => onPromptChange(event.target.value)}
+                  onChange={(event) => handlePromptValueChange(event.target.value)}
                   placeholder={
                     mode === "generate"
                       ? "描述你想生成的画面，也可以先上传参考图"
@@ -391,12 +503,7 @@ export function PromptComposer({
                         : "可选：描述你想增强的方向"
                   }
                   onPaste={onPromptPaste}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" && !event.shiftKey) {
-                      event.preventDefault();
-                      void onSubmit();
-                    }
-                  }}
+                  onKeyDown={handlePromptKeyDown}
                   className="hidden resize-none border-0 bg-transparent !px-1 !pb-1 text-[14px] text-stone-900 shadow-none placeholder:text-stone-400 focus-visible:ring-0 sm:block sm:min-h-[38px] sm:max-h-[70px] sm:overflow-y-auto sm:!pt-1 sm:pr-10 sm:text-[15px] sm:leading-7"
                   onFocus={() => setIsMobileComposerExpanded(true)}
                 />
@@ -405,7 +512,7 @@ export function PromptComposer({
               <Textarea
                 ref={textareaRef}
                 value={imagePrompt}
-                onChange={(event) => onPromptChange(event.target.value)}
+                onChange={(event) => handlePromptValueChange(event.target.value)}
                 placeholder={
                   mode === "generate"
                     ? "描述你想生成的画面，也可以先上传参考图"
@@ -414,16 +521,60 @@ export function PromptComposer({
                       : "可选：描述你想增强的方向"
                 }
                 onPaste={onPromptPaste}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey) {
-                    event.preventDefault();
-                    void onSubmit();
-                  }
-                }}
+                onKeyDown={handlePromptKeyDown}
                 className="resize-none border-0 bg-transparent !px-1 !pb-1 text-[14px] text-stone-900 shadow-none placeholder:text-stone-400 focus-visible:ring-0 min-h-[30px] max-h-[70px] overflow-y-auto !pt-1 pr-10 leading-6 sm:min-h-[38px] sm:text-[15px] sm:leading-7"
                 onFocus={() => setIsMobileComposerExpanded(true)}
               />
             )}
+            {mentionPickerOpen && imageReferenceSources.length > 0 ? (
+              <div className="absolute left-4 top-full z-[70] mt-2 w-[min(360px,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-[0_18px_60px_-24px_rgba(15,23,42,0.45)] dark:border-[var(--studio-border)] dark:bg-[var(--studio-panel)]">
+                <div className="flex items-center gap-2 border-b border-stone-100 px-3 py-2 text-xs font-semibold text-stone-500">
+                  <Tags className="size-3.5" />
+                  选择要引用的图片
+                </div>
+                <div className="max-h-64 overflow-y-auto p-1.5">
+                  {imageReferenceSources.map((source, pickerIndex) => {
+                    const sourceIndex = sourceImages.findIndex((item) => item.id === source.id);
+                    const label = buildSourceImageReferenceLabel(source, sourceIndex >= 0 ? sourceIndex : pickerIndex);
+                    const alias = normalizeSourceImageMention(source.referenceAlias);
+                    return (
+                      <button
+                        key={source.id}
+                        type="button"
+                        className={cn(
+                          "flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition",
+                          pickerIndex === mentionPickerIndex
+                            ? "bg-stone-100"
+                            : "hover:bg-stone-50",
+                        )}
+                        onMouseEnter={() => setMentionPickerIndex(pickerIndex)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          insertImageMention(source, sourceIndex >= 0 ? sourceIndex : pickerIndex);
+                        }}
+                      >
+                        <Image
+                          src={buildSourceImageUrl(source)}
+                          alt={source.name}
+                          width={48}
+                          height={48}
+                          unoptimized
+                          className="size-11 rounded-lg bg-stone-100 object-cover"
+                        />
+                        <span className="min-w-0">
+                          <span className="block text-sm font-semibold text-stone-900">
+                            {alias ? `${label} / ${alias}` : label}
+                          </span>
+                          <span className="block truncate text-xs text-stone-500">
+                            {source.name || "参考图"}
+                          </span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
           </div>
           <div className={cn("px-3 pb-1.5 pt-2.5 sm:px-4 sm:pb-2.5 sm:pt-2.5", showMobileExpandedSections ? "block" : "hidden lg:block")}>
             <div className="flex items-end justify-between gap-3">

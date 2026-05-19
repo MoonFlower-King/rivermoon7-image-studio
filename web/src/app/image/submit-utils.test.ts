@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  buildReferencedImagePrompt,
   createConversationTurn,
   mergeSingleResultImage,
   runImageFanOutRequests,
+  withStableSourceImageLabels,
 } from "./submit-utils";
 
 describe("runImageFanOutRequests", () => {
@@ -164,5 +166,84 @@ describe("runImageFanOutRequests", () => {
     });
 
     expect(turn.outputFormat).toBe("png");
+  });
+});
+
+describe("buildReferencedImagePrompt", () => {
+  it("assigns stable image labels without renumbering existing sources", () => {
+    const existingSources = [
+      {
+        id: "source-2",
+        role: "image" as const,
+        name: "kept.png",
+        referenceLabel: "@图2",
+      },
+    ];
+
+    const nextSources = withStableSourceImageLabels(existingSources, [
+      {
+        id: "source-3",
+        role: "image",
+        name: "new.png",
+      },
+      {
+        id: "mask-1",
+        role: "mask",
+        name: "mask.png",
+      },
+    ]);
+
+    expect(existingSources[0].referenceLabel).toBe("@图2");
+    expect(nextSources[0].referenceLabel).toBe("@图3");
+    expect(nextSources[1].referenceLabel).toBeUndefined();
+  });
+
+  it("adds a reference guide when prompt uses source image mentions", () => {
+    const prompt = buildReferencedImagePrompt("让 @图1 穿上 @衣服 的外套", [
+      {
+        id: "source-1",
+        role: "image",
+        name: "person.png",
+        referenceLabel: "@图1",
+      },
+      {
+        id: "source-2",
+        role: "image",
+        name: "coat.png",
+        referenceLabel: "@图2",
+        referenceAlias: "@衣服",
+      },
+    ]);
+
+    expect(prompt).toContain("参考图说明：");
+    expect(prompt).toContain("- @图1：第 1 张参考图，文件名 person.png");
+    expect(prompt).toContain("- @图2 / @衣服：第 2 张参考图，文件名 coat.png");
+    expect(prompt).toContain("用户要求：\n让 @图1 穿上 @衣服 的外套");
+  });
+
+  it("keeps prompts without source images unchanged", () => {
+    expect(buildReferencedImagePrompt("生成一张城市夜景", [])).toBe(
+      "生成一张城市夜景",
+    );
+  });
+
+  it("adds ordering guidance for multiple source images without explicit mentions", () => {
+    const prompt = buildReferencedImagePrompt("合成一张产品海报", [
+      {
+        id: "source-1",
+        role: "image",
+        name: "product.png",
+        referenceLabel: "@图1",
+      },
+      {
+        id: "source-2",
+        role: "image",
+        name: "background.png",
+        referenceLabel: "@图2",
+      },
+    ]);
+
+    expect(prompt).toContain("如果用户要求没有点名某张图，请按上述编号和上传顺序区分参考图，避免混淆。");
+    expect(prompt).toContain("用户要求：\n合成一张产品海报");
   });
 });

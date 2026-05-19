@@ -206,6 +206,93 @@ export function mergeSingleResultImage(
   };
 }
 
+export function normalizeSourceImageMention(value: string | undefined) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) {
+    return "";
+  }
+  return trimmed.startsWith("@") ? trimmed : `@${trimmed}`;
+}
+
+export function buildSourceImageReferenceLabel(source: StoredSourceImage, index: number) {
+  return normalizeSourceImageMention(source.referenceLabel) || `@图${index + 1}`;
+}
+
+export function getNextSourceImageReferenceNumber(items: StoredSourceImage[]) {
+  const usedNumbers = items
+    .filter((item) => item.role === "image")
+    .map((item, index) => buildSourceImageReferenceLabel(item, index))
+    .map((label) => label.match(/^@图(\d+)$/)?.[1])
+    .filter((value): value is string => Boolean(value))
+    .map((value) => Number(value));
+  return usedNumbers.length > 0 ? Math.max(...usedNumbers) + 1 : 1;
+}
+
+export function withStableSourceImageLabels(
+  current: StoredSourceImage[],
+  nextItems: StoredSourceImage[],
+) {
+  let nextReferenceNumber = getNextSourceImageReferenceNumber(current);
+  return nextItems.map((item) => {
+    if (item.role !== "image" || item.referenceLabel) {
+      return item;
+    }
+    const labelledItem = {
+      ...item,
+      referenceLabel: `@图${nextReferenceNumber}`,
+    };
+    nextReferenceNumber += 1;
+    return labelledItem;
+  });
+}
+
+export function buildReferencedImagePrompt(
+  prompt: string,
+  sourceImages: StoredSourceImage[] = [],
+) {
+  const trimmedPrompt = prompt.trim();
+  const imageSources = sourceImages.filter((item) => item.role === "image");
+  if (imageSources.length === 0) {
+    return trimmedPrompt;
+  }
+
+  const referenceLines = imageSources.map((source, index) => {
+    const label = buildSourceImageReferenceLabel(source, index);
+    const alias = normalizeSourceImageMention(source.referenceAlias);
+    const labelText = alias && alias !== label ? `${label} / ${alias}` : label;
+    const fileName = source.name?.trim();
+    return `- ${labelText}：第 ${index + 1} 张参考图${fileName ? `，文件名 ${fileName}` : ""}`;
+  });
+
+  const mentionTokens = imageSources.flatMap((source, index) =>
+    [
+      buildSourceImageReferenceLabel(source, index),
+      normalizeSourceImageMention(source.referenceAlias),
+    ].filter(Boolean),
+  );
+  const usesExplicitMention = mentionTokens.some((token) =>
+    trimmedPrompt.includes(token),
+  );
+  const orderingGuidance =
+    !usesExplicitMention && imageSources.length > 1
+      ? "\n如果用户要求没有点名某张图，请按上述编号和上传顺序区分参考图，避免混淆。"
+      : "";
+
+  return [
+    "参考图说明：",
+    ...referenceLines,
+    orderingGuidance,
+    "",
+    "用户要求：",
+    trimmedPrompt,
+  ].filter((line, index, lines) => {
+    if (line !== "") {
+      return true;
+    }
+    return lines[index - 1] !== "";
+  }).join("\n");
+}
+
 export async function runImageFanOutRequests({
   turnId,
   count,

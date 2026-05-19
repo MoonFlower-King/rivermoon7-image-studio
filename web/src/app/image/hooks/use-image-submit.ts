@@ -24,6 +24,7 @@ import type {
 import type { EditorTarget } from "./use-image-source-inputs";
 import {
   buildConversationTitle,
+  buildReferencedImagePrompt,
   createConversationTurn,
   createLoadingImages,
   dataUrlToFile,
@@ -107,12 +108,16 @@ function buildSourceReference(payload: {
   role: "image" | "mask";
   name: string;
   url: string;
+  referenceLabel?: string;
+  referenceAlias?: string;
 }): StoredSourceImage {
   if (payload.url.startsWith("data:")) {
     return {
       id: payload.id,
       role: payload.role,
       name: payload.name,
+      referenceLabel: payload.referenceLabel,
+      referenceAlias: payload.referenceAlias,
       dataUrl: payload.url,
     };
   }
@@ -120,6 +125,8 @@ function buildSourceReference(payload: {
     id: payload.id,
     role: payload.role,
     name: payload.name,
+    referenceLabel: payload.referenceLabel,
+    referenceAlias: payload.referenceAlias,
     url: payload.url,
   };
 }
@@ -346,6 +353,13 @@ export function useImageSubmit({
       const nextQuality = normalizeImageQuality(overrideQuality, imageQuality);
       const turnId = makeId();
       const now = new Date().toISOString();
+      const selectionSourceImage = buildSourceReference({
+        id: makeId(),
+        role: "image",
+        name: editorTarget.imageName,
+        referenceLabel: "@图1",
+        url: editorTarget.sourceDataUrl,
+      });
       const draftTurn = createConversationTurn({
         turnId,
         title: buildConversationTitle("edit", prompt),
@@ -358,12 +372,7 @@ export function useImageSubmit({
         quality: nextQuality,
         outputFormat: imageOutputFormat,
         sourceImages: [
-          buildSourceReference({
-            id: makeId(),
-            role: "image",
-            name: editorTarget.imageName,
-            url: editorTarget.sourceDataUrl,
-          }),
+          selectionSourceImage,
           {
             id: makeId(),
             role: "mask",
@@ -412,7 +421,7 @@ export function useImageSubmit({
           editorTarget.imageName || "source.png",
         );
         const result = await editImage({
-          prompt,
+          prompt: buildReferencedImagePrompt(prompt, [selectionSourceImage]),
           images: [sourceFile],
           mask: mask.file,
           size: imageSize,
@@ -566,10 +575,11 @@ export function useImageSubmit({
         const editMask = usesEditEndpoint
           ? await sourceMaskToFile(turnMaskSource)
           : null;
-        const requestOneImage = () =>
+      const requestPrompt = buildReferencedImagePrompt(prompt, turnImageSources);
+      const requestOneImage = () =>
           usesEditEndpoint
             ? editImage({
-                prompt,
+                prompt: requestPrompt,
                 images: editFiles,
                 mask: editMask,
                 size: turn.size,
@@ -579,7 +589,7 @@ export function useImageSubmit({
                 outputFormat: turnOutputFormat,
                 outputCompression,
               })
-            : generateImageWithOptions(prompt, {
+            : generateImageWithOptions(requestPrompt, {
                 model: PUBLIC_IMAGE_MODEL,
                 count: 1,
                 size: turn.size,
@@ -686,6 +696,7 @@ export function useImageSubmit({
     const conversationId = selectedConversationId ?? makeId();
     const turnId = makeId();
     const expectedCount = mode === "generate" ? parsedCount : 1;
+    const requestPrompt = buildReferencedImagePrompt(prompt, imageSources);
     const draftTurn = createConversationTurn({
       turnId,
       title: buildConversationTitle(mode, prompt),
@@ -745,7 +756,7 @@ export function useImageSubmit({
         requestImage: () =>
           usesEditEndpoint
             ? editImage({
-                prompt,
+                prompt: requestPrompt,
                 images: editFiles,
                 mask: editMask,
                 size: imageSize,
@@ -755,7 +766,7 @@ export function useImageSubmit({
                 outputFormat: imageOutputFormat,
                 outputCompression,
               })
-            : generateImageWithOptions(prompt, {
+            : generateImageWithOptions(requestPrompt, {
                 model: PUBLIC_IMAGE_MODEL,
                 count: 1,
                 size: imageSize,

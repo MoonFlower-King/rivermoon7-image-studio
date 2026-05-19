@@ -20,6 +20,8 @@ export type StoredSourceImage = {
   id: string;
   role: "image" | "mask";
   name: string;
+  referenceLabel?: string;
+  referenceAlias?: string;
   dataUrl?: string;
   url?: string;
 };

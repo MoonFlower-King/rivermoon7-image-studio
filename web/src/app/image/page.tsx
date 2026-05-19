@@ -680,6 +680,7 @@ export default function ImagePage() {
     appendFiles,
     handlePromptPaste,
     removeSourceImage,
+    updateSourceImageReference,
     seedFromResult,
     openSelectionEditor,
     openSourceSelectionEditor,
@@ -1568,6 +1569,7 @@ export default function ImagePage() {
         onPromptChange={setImagePrompt}
         onPromptPaste={handlePromptPaste}
         onRemoveSourceImage={removeSourceImage}
+        onUpdateSourceImageReference={updateSourceImageReference}
         onOpenSourceSelectionEditor={openSourceSelectionEditor}
         onAppendFiles={appendFiles}
         onMobileCollapsedChange={setIsMobileComposerCollapsed}

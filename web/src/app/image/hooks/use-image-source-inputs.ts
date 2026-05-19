@@ -6,6 +6,10 @@ import { toast } from "sonner";
 import type { ImageMode } from "@/store/image-conversations";
 import type { StoredImage, StoredSourceImage } from "@/store/image-conversations";
 
+import {
+  getNextSourceImageReferenceNumber,
+  withStableSourceImageLabels,
+} from "../submit-utils";
 import { buildImageDataUrl, buildSourceImageUrl } from "../view-utils";
 
 export type EditorTarget = {
@@ -38,12 +42,14 @@ function buildStoredSourceImageFromURL(payload: {
   role: "image" | "mask";
   name: string;
   url: string;
+  referenceLabel?: string;
 }): StoredSourceImage {
   if (payload.url.startsWith("data:")) {
     return {
       id: payload.id,
       role: payload.role,
       name: payload.name,
+      referenceLabel: payload.referenceLabel,
       dataUrl: payload.url,
     };
   }
@@ -51,8 +57,22 @@ function buildStoredSourceImageFromURL(payload: {
     id: payload.id,
     role: payload.role,
     name: payload.name,
+    referenceLabel: payload.referenceLabel,
     url: payload.url,
   };
+}
+
+function appendSourceImagesWithStableLabels(
+  current: StoredSourceImage[],
+  nextItems: StoredSourceImage[],
+) {
+  const labelledItems = withStableSourceImageLabels(current, nextItems);
+
+  return [
+    ...current.filter((item) => item.role !== "mask"),
+    ...current.filter((item) => item.role === "mask"),
+    ...labelledItems,
+  ];
 }
 
 export function useImageSourceInputs({
@@ -83,7 +103,7 @@ export function useImageSourceInputs({
       if (role === "mask") {
         return [...prev.filter((item) => item.role !== "mask"), nextItems[0]];
       }
-      return [...prev.filter((item) => item.role !== "mask"), ...prev.filter((item) => item.role === "mask"), ...nextItems];
+      return appendSourceImagesWithStableLabels(prev, nextItems);
     });
   }, [makeId]);
 
@@ -110,6 +130,24 @@ export function useImageSourceInputs({
     setSourceImages((prev) => prev.filter((item) => item.id !== id));
   }, []);
 
+  const updateSourceImageReference = useCallback((id: string, value: string) => {
+    const normalized = value.trim();
+    setSourceImages((prev) =>
+      prev.map((item) =>
+        item.id === id
+          ? {
+              ...item,
+              referenceAlias: normalized
+                ? normalized.startsWith("@")
+                  ? normalized
+                  : `@${normalized}`
+                : undefined,
+            }
+          : item,
+      ),
+    );
+  }, []);
+
   const seedFromResult = useCallback((conversationId: string, image: StoredImage, nextMode: ImageMode) => {
     const dataUrl = buildImageDataUrl(image);
     if (!dataUrl) {
@@ -123,6 +161,7 @@ export function useImageSourceInputs({
         id: makeId(),
         role: "image",
         name: "source.png",
+        referenceLabel: `@图${getNextSourceImageReferenceNumber([])}`,
         url: dataUrl,
       }),
     ]);
@@ -179,5 +218,6 @@ export function useImageSourceInputs({
     openSelectionEditor,
     openSourceSelectionEditor,
     closeSelectionEditor,
+    updateSourceImageReference,
   };
 }
