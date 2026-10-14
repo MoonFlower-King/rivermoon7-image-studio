@@ -823,6 +823,10 @@ class ImageRelayHandler(BaseHTTPRequestHandler):
             return "", False
         key = self.fetch_console_token_key(token_id, auth_headers)
         if key and cache_key:
+            now = time.time()
+            for stale_key, entry in list(CONSOLE_TOKEN_CACHE.items()):
+                if entry.get("expires_at", 0) <= now:
+                    CONSOLE_TOKEN_CACHE.pop(stale_key, None)
             CONSOLE_TOKEN_CACHE[cache_key] = {
                 "key": key,
                 "expires_at": time.time() + TOKEN_CACHE_TTL_SECONDS,
@@ -830,8 +834,20 @@ class ImageRelayHandler(BaseHTTPRequestHandler):
         return key or "", False
 
     def console_token_cache_key(self, auth_headers):
+        # The cache must be keyed by the caller's credentials, not by the
+        # client-supplied user id header alone; otherwise anyone could send a
+        # victim's user id and reuse the victim's cached image token.
         user_id = auth_headers.get("New-API-User", "").strip()
-        return f"user:{user_id}" if user_id else ""
+        credential = "\n".join(
+            [
+                user_id,
+                auth_headers.get("Authorization", "").strip(),
+                auth_headers.get("Cookie", "").strip(),
+            ]
+        )
+        if not user_id or credential == user_id + "\n\n":
+            return ""
+        return "cred:" + hashlib.sha256(credential.encode("utf-8")).hexdigest()
 
     def find_console_image_token(self, auth_headers):
         for page in range(1, 11):
